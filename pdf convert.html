@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF to Images</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    input, button {
+      margin-bottom: 10px;
+    }
+    #output {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .image-container {
+      position: relative;
+      display: inline-block;
+    }
+    img {
+      max-width: 200px;
+      border: 1px solid #ddd;
+      padding: 5px;
+    }
+    .remove-button {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>PDF to Images</h1>
+  <input type="file" id="pdfFile" accept="application/pdf" />
+  <button id="convertButton">Convert</button>
+  <button id="downloadButton" style="display: none;">Download All Images</button>
+  <div id="output"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.15.349/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script>
+    const convertButton = document.getElementById('convertButton');
+    const downloadButton = document.getElementById('downloadButton');
+    const pdfFileInput = document.getElementById('pdfFile');
+    const outputDiv = document.getElementById('output');
+    let images = []; // Array to hold image data URLs
+
+    convertButton.addEventListener('click', async () => {
+      const file = pdfFileInput.files[0];
+      if (!file) {
+        alert('Please select a PDF file first!');
+        return;
+      }
+
+      const fileReader = new FileReader();
+      fileReader.onload = async function () {
+        const typedArray = new Uint8Array(this.result);
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+
+        outputDiv.innerHTML = ''; // Clear previous output
+        images = []; // Reset images array
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport,
+          };
+          await page.render(renderContext).promise;
+
+          const imgSrc = canvas.toDataURL();
+          images.push(imgSrc); // Add image to the array
+
+          const imageContainer = document.createElement('div');
+          imageContainer.className = 'image-container';
+
+          const img = document.createElement('img');
+          img.src = imgSrc;
+
+          const removeButton = document.createElement('button');
+          removeButton.className = 'remove-button';
+          removeButton.textContent = '❌';
+          removeButton.onclick = () => {
+            const index = images.indexOf(imgSrc);
+            if (index > -1) images.splice(index, 1); // Remove from images array
+            imageContainer.remove(); // Remove from DOM
+            if (images.length === 0) downloadButton.style.display = 'none';
+          };
+
+          imageContainer.appendChild(img);
+          imageContainer.appendChild(removeButton);
+          outputDiv.appendChild(imageContainer);
+        }
+
+        if (images.length > 0) downloadButton.style.display = 'inline-block';
+      };
+      fileReader.readAsArrayBuffer(file);
+    });
+
+    downloadButton.addEventListener('click', () => {
+      if (images.length === 0) {
+        alert('No images to download!');
+        return;
+      }
+
+      const zip = new JSZip();
+      images.forEach((imgSrc, index) => {
+        const imgData = imgSrc.split(',')[1];
+        zip.file(`page-${index + 1}.png`, imgData, { base64: true });
+      });
+
+      zip.generateAsync({ type: 'blob' }).then((content) => {
+        saveAs(content, 'images.zip');
+      });
+    });
+  </script>
+</body>
+</html>
